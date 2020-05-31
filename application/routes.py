@@ -31,7 +31,7 @@ def login():
 def courses(term=None):
     if term is None:
         term = "Spring 2019"
-    classes = Course.objects.all()
+    classes = Course.objects.order_by("-courseID")
     return render_template("courses.html", courseData=classes, courses = True, term=term )
 
 @app.route("/register", methods=['POST','GET'])
