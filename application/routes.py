@@ -31,7 +31,7 @@ def login():
 def courses(term=None):
     if term is None:
         term = "Spring 2019"
-    classes = Course.objects.all()
+    classes = Course.objects.order_by("-courseID")
     return render_template("courses.html", courseData=classes, courses = True, term=term )
 
 @app.route("/register", methods=['POST','GET'])
@@ -53,12 +53,26 @@ def register():
         return redirect(url_for('index'))
     return render_template("register.html", title="Register", form=form, register=True)
 
+
 @app.route("/enrollment", methods=["GET","POST"])
 def enrollment():
-    id = request.form.get('courseID')
-    title = request.form['title']
+    courseID = request.form.get('courseID')
+    courseTitle = request.form.get('title')
+    
+    if courseID:
+        if Enrollment.object(user_id=user,courseID=courseID):
+            flash(f"Oops! You are already registered in this course {courseTitle}!", "danger")
+            return redirect(url_for("courses"))
+        else:
+            Enrollment(user_id=user_id,courseID=courseID)
+            flash(f"You are enrolled in {courseTitle}!", "success")
+
+    classes = None
+
     term = request.form.get('term')
-    return render_template("enrollment.html", enrollment=True, data={"id":id,"title":title,"term":term})    
+    return render_template("enrollment.html", enrollment=True, title="Enrollmenr", classes=classes)    
+
+
 
 @app.route("/api/")
 @app.route("/api/<idx>")
