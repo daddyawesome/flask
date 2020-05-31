@@ -1,5 +1,5 @@
 from application import app, db
-from flask import render_template, request, json, Response, redirect, flash, url_for
+from flask import render_template, request, json, Response, redirect, flash, url_for, session
 from application.models import User, Course, Enrollment
 from application.forms import LoginForm, RegisterForm
 
@@ -13,6 +13,9 @@ def index():
 
 @app.route("/login", methods=['GET','POST'])
 def login():
+    if session.get('username'):
+        return redirect(url_for('index'))
+
     form = LoginForm()
     if form.validate_on_submit():
         email       = form.email.data
@@ -21,10 +24,19 @@ def login():
         user = User.objects(email=email).first()
         if user and user.get_password(password):
             flash(f"{user.first_name}, you are successfully logged in!", "success")
+            session['user_id'] = user.user_id
+            session['username']=user.first_name
             return redirect("/index")
         else:
             flash("Sorry, something went wrong.","danger")
     return render_template("login.html", title="Login", form=form, login=True )
+
+@app.route("/logout")
+def logout():
+    session['user_id']=False
+    session.pop('username', None)
+    return redirect(url_for('index'))
+
 
 @app.route("/courses/")
 @app.route("/courses/<term>")
@@ -36,6 +48,9 @@ def courses(term=None):
 
 @app.route("/register", methods=['POST','GET'])
 def register():
+    if session.get('username'):
+        return redirect(url_for('index'))
+
     form = RegisterForm()
     if form.validate_on_submit():
         user_id     = User.objects.count()
@@ -56,21 +71,61 @@ def register():
 
 @app.route("/enrollment", methods=["GET","POST"])
 def enrollment():
+    
+    if not session.get('username'):
+        return redirect(url_for('login'))
+
     courseID = request.form.get('courseID')
     courseTitle = request.form.get('title')
+    user_id = session.get('user_id')
     
     if courseID:
-        if Enrollment.object(user_id=user,courseID=courseID):
+        if Enrollment.objects(user_id=user_id,courseID=courseID):
             flash(f"Oops! You are already registered in this course {courseTitle}!", "danger")
             return redirect(url_for("courses"))
         else:
-            Enrollment(user_id=user_id,courseID=courseID)
+            Enrollment(user_id=user_id,courseID=courseID).save()
             flash(f"You are enrolled in {courseTitle}!", "success")
 
-    classes = None
+    classes = list( User.objects.aggregate(*[
+                {
+                    '$lookup': {
+                        'from': 'enrollment', 
+                        'localField': 'user_id', 
+                        'foreignField': 'user_id', 
+                        'as': 'r1'
+                    }
+                }, {
+                    '$unwind': {
+                        'path': '$r1', 
+                        'includeArrayIndex': 'r1_id', 
+                        'preserveNullAndEmptyArrays': False
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'course', 
+                        'localField': 'r1.courseID', 
+                        'foreignField': 'courseID', 
+                        'as': 'r2'
+                    }
+                }, {
+                    '$unwind': {
+                        'path': '$r2', 
+                        'preserveNullAndEmptyArrays': False
+                    }
+                }, {
+                    '$match': {
+                        'user_id': user_id
+                    }
+                }, {
+                    '$sort': {
+                        'courseID': 1
+                    }
+                }
 
-    term = request.form.get('term')
-    return render_template("enrollment.html", enrollment=True, title="Enrollmenr", classes=classes)    
+                ]))
+
+    return render_template("enrollment.html", enrollment=True, title="Enrollment", classes=classes)    
 
 
 
